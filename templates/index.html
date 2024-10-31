@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioVision</title>
+    <link rel="icon" href="{{ url_for('static', filename='assets/icon.png')}}" type="image/x-icon">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <section class="home">
+        <nav>
+            <img src="{{ url_for('static', filename='assets/icon.png')}}" alt="logo" width="30">
+            <p>AudioVision</p>
+        </nav>
+        <div class="content">
+            <h1>Convert sound to meaning with one click.</h1>
+            <i>— Capture the sound and watch your words come to life.</i>
+            <input type="file" id="start" accept="audio/ogg" onchange="handleFiles(event)" hidden>
+            <label for="start" class="button_upload">
+                Try Now</label>
+        </div>
+        <small>you can drop an audio file anywhere on the page</small>
+        <div class="gradient_container">
+            <span class="box"></span>
+            <span class="box"></span>
+            <span class="box"></span>
+            <span class="box"></span>
+        </div>
+    </section>
+    <section class="transcriptionsList">
+        <div class="content">
+            <nav>
+                <h1>Your transcriptions</h1>
+                <input type="file" id="file-input" accept="audio/ogg" onchange="handleFiles(event)" hidden>
+                <label for="file-input" class="button_upload">Select file</label>
+            </nav>
+            <strong class="size"></strong>
+            <ul id="history-list"></ul>
+        </div>
+    </section>
+
+    <script>
+        const fileInputStart = document.getElementById('start');
+        const fileInput = document.getElementById('file-input');
+        const historyList = document.getElementById('history-list');
+        const memory = document.querySelector('.size');
+        const uploadButtons = document.querySelectorAll('.button_upload');
+        let isProcessing = false;
+
+        document.addEventListener("contextmenu", e => e.preventDefault());
+
+        fileInputStart.addEventListener('change', (e) => {
+            e.preventDefault();
+            handleFiles(e);
+        });
+        fileInput.addEventListener('change', (e) => {
+            e.preventDefault();
+            handleFiles(e);
+        });
+
+        document.body.addEventListener('dragover', e => e.preventDefault());
+
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === "audio/ogg") {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(files[0]);
+                fileInput.files = dataTransfer.files;
+                handleFiles({ target: fileInput });
+            }
+        });
+
+        async function handleFiles(e) {
+            if (isProcessing) return;
+
+            isProcessing = true;
+            const input = e.target;
+            const file = input.files[0];
+            const button = document.querySelector(`label[for="${input.id}"]`);
+
+            if (!file || file.type !== "audio/ogg") {
+                button.classList.remove('button_upload_loading');
+                isProcessing = false;
+                return;
+            }
+
+            document.body.style.pointerEvents = "none";
+            const { base64, size, name } = await convertToBase64(file);
+            const uniqueId = generateRandomId();
+            const formData = new FormData();
+            formData.append('audio', file);
+            fetch('http://127.0.0.1:5001/transcribe', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Erro na resposta do servidor: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.transcription) {
+                        saveToLocalStorage(uniqueId, {
+                            transcription: data.transcription,
+                            plot: data.plot,
+                            analysis_ai: null,
+                            timestamp: Date.now(),
+                            file: {
+                                name: name,
+                                size: size,
+                                data: base64
+                            }
+                        });
+                        renderHistory();
+                        calcularEspacoRestante();
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao enviar o arquivo:', error);
+                })
+                .finally(() => {
+                    isProcessing = false;
+                    document.body.style.pointerEvents = "auto";
+                });
+        }
+
+        async function sendToAnalyzeEndpoint(id, transcription) {
+            try {
+                const response = await fetch('http://127.0.0.1:5001/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ transcription })
+                });
+                const data = await response.json();
+                if (data.analysis) {
+                    updateLocalStorage(id, { analysis_ai: data.analysis });
+                    renderHistory();
+                    animate(id)
+                }
+            } catch (error) {
+                console.error('Erro ao enviar a transcrição para análise da IA:', error);
+            }
+        }
+
+        function homeLoad() {
+            let audioHistory = JSON.parse(localStorage.getItem('audioHistory')) || {};
+            if (Object.keys(audioHistory).length === 0) {
+                window.scrollTo(0, 0);
+                document.body.style.overflow = "hidden";
+            }
+        }
+
+        function saveToLocalStorage(uniqueId, itemData) {
+            let audioHistory = JSON.parse(localStorage.getItem('audioHistory')) || {};
+            audioHistory[uniqueId] = itemData;
+            localStorage.setItem('audioHistory', JSON.stringify(audioHistory));
+        }
+
+        function updateLocalStorage(uniqueId, updatedData) {
+            let audioHistory = JSON.parse(localStorage.getItem('audioHistory')) || {};
+            if (audioHistory[uniqueId]) {
+                audioHistory[uniqueId] = { ...audioHistory[uniqueId], ...updatedData };
+                localStorage.setItem('audioHistory', JSON.stringify(audioHistory));
+            }
+        }
+
+        function removeHistoryItem(key) {
+            let audioHistory = JSON.parse(localStorage.getItem('audioHistory')) || {};
+            if (audioHistory[key]) {
+                delete audioHistory[key];
+                localStorage.setItem('audioHistory', JSON.stringify(audioHistory));
+            }
+            renderHistory();
+            calcularEspacoRestante();
+            homeLoad()
+        }
+
+        function animate(id) {
+            const transcriptionElement = document.getElementById(`transcription-${id}`);
+            const GeminiModelUsed = document.getElementById(`model-${id}`);
+            animateTextTyping(transcriptionElement, GeminiModelUsed);
+        }
+
+        function renderHistory() {
+            document.documentElement.style.scrollSnapType = "y mandatory";
+            document.body.style.scrollSnapType = "y mandatory";
+            if (localStorage.getItem("audioHistory")) window.scrollTo(0, document.body.scrollHeight);
+            historyList.innerHTML = "";
+            const audioHistory = JSON.parse(localStorage.getItem("audioHistory")) || {};
+            const items = Object.entries(audioHistory).map(([key, value]) => ({ key, value }));
+            if (!items.length) return;
+            items.sort((a, b) => b.value.timestamp - a.value.timestamp);
+            items.forEach((item, index) => {
+                const value = item.value;
+                const listItem = document.createElement('li');
+                const audioId = `audioPlayer-${index}`;
+                const buttonId = `toggleButton-${index}`;
+                const buttonGemId = `gemini-${item.key}`;
+                const delButtonId = `delete-${index}`;
+
+                const GeminiAnalysisContent = value?.analysis_ai ? `
+                    <p class="aiContext" id="transcription-${item.key}">${value?.analysis_ai}</p>
+                    <a href="https://gemini.google.com/" target="_blank" class="modelName" id="model-${item.key}">— Gemini 1.5 Flash
+                        <img src="static/assets/gemini.png" alt="GeminiAnalysis" width="15"></a>`
+                    : "";
+
+                const resumButton = !value?.analysis_ai ? `
+                    <button type="button" class="gem" title="Generate a summary for this transcript using Google Gemini 1.5 Flash"
+                        id="${buttonGemId}">
+                        <img src="static/assets/gemini.png" alt="GeminiAnalysis" width="20">
+                    </button>`
+                    : ""
+
+                listItem.innerHTML = `
+                    <div class="audioControl">   
+                        <div class="top">
+                            <span class="name">${value?.file?.name}</span>
+                            <button id="${delButtonId}" type="button" title="Delete ${value?.file?.name} Transcription">⃠</button>
+                        </div>
+                        <div class="audioNav">
+                           <div class="audio">
+                                <button id="${buttonId}" type="button">▶</button>
+                                <div class="imgControl">
+                                    <div class="img-comp-img">
+                                        <img src="${value?.plot}" alt="Gráfico de Frequência" class="control" width="180" height="30">
+                                    </div>
+                                    <div class="img-comp-img img-comp-overlay">
+                                        <img src="${value?.plot}" alt="Gráfico de Frequência" class="base" width="180" height="30">
+                                    </div>
+                                </div>
+                                <audio id="${audioId}">
+                                    <source src="data:audio/ogg;base64,${value?.file?.data}" type="audio/ogg">
+                                    Seu navegador não suporta o elemento de áudio.
+                                </audio>
+                            </div>
+                            ${resumButton}
+                        </div>
+                        <p class="result">${value?.transcription}</p>
+                        <div class="GeminiArea">${GeminiAnalysisContent}</div>
+                    </div>
+                `;
+
+                historyList.appendChild(listItem);
+                const deleteButton = document.getElementById(delButtonId);
+                deleteButton.addEventListener('click', () => removeHistoryItem(item.key));
+            });
+            addAudioEventListeners();
+            document.body.style.pointerEvents = "auto";
+            document.body.style.overflow = "auto";
+            initComparisons();
+            geminiResumListeners();
+            uploadButtons.forEach(button => {
+                button.classList.remove('button_upload_loading');
+            });
+        }
+
+        function geminiResumListeners() {
+            const audioHistory = JSON.parse(localStorage.getItem("audioHistory")) || {};
+            const items = Object.entries(audioHistory).map(([key, value]) => ({ key, value }));
+            document.querySelectorAll(".gem").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const id = btn.id.split("-").pop();
+                    const item = items.find(({ key }) => key === id);
+                    const transcriptionFound = item.value.transcription
+                    sendToAnalyzeEndpoint(id, transcriptionFound)
+                })
+            })
+        }
+
+        function convertToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result.split(',')[1];
+                    resolve({
+                        base64,
+                        size: file.size,
+                        name: file.name
+                    });
+                };
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function generateRandomId(length = 10) {
+            const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += characters.charAt(Math.floor(Math.random() * characters.length));
+            }
+            return result;
+        }
+
+        const limite_total = 1 * 1024 * 1024 * 1024;
+
+        function calcularEspacoRestante() {
+            const audioHistory = JSON.parse(localStorage.getItem('audioHistory')) || {};
+            let totalUsado = Object.values(audioHistory).reduce((total, item) => {
+                return item.file && item.file.size ? total + item.file.size : total;
+            }, 0);
+
+            const totalRestante = limite_total - totalUsado;
+            let displayText;
+
+            if (totalRestante >= 1024 * 1024 * 1024) {
+                const totalRestanteGB = totalRestante / (1024 * 1024 * 1024);
+                displayText = `${totalRestanteGB.toFixed(2)} GB`;
+            } else if (totalRestante >= 1024 * 1024) {
+                const totalRestanteMB = totalRestante / (1024 * 1024);
+                displayText = `${totalRestanteMB.toFixed(2)} MB`;
+            } else if (totalRestante >= 1024) {
+                const totalRestanteKB = totalRestante / 1024;
+                displayText = `${totalRestanteKB.toFixed(2)} KB`;
+            } else {
+                displayText = `${totalRestante.toFixed(2)} bytes`;
+            }
+            memory.textContent = `Total space remaining: ${displayText}`;
+        }
+
+        function toggleUploadButtonEffect(event) {
+            const button = event.target;
+            button.classList.toggle('button_upload_loading');
+        }
+
+        uploadButtons.forEach(button => {
+            button.addEventListener('click', toggleUploadButtonEffect);
+            fileInputStart.addEventListener("cancel", (event) => {
+                button.classList.remove('button_upload_loading');
+            })
+            fileInput.addEventListener("cancel", (event) => {
+                button.classList.remove('button_upload_loading');
+            })
+        });
+
+        const animateTextTyping = (node, model) => {
+            const text = node.textContent;
+            const chars = text.split("");
+            node.innerHTML = "";
+            let i = 0;
+            const addNextChar = (i) => {
+                let nextChar = chars[i] === "\n" ? "<br>" : chars[i];
+                node.innerHTML += "<span>" + nextChar + "</span>";
+                if (i < chars.length - 1) {
+                    setTimeout(() => addNextChar(i + 1), 10 + Math.random() * 50);
+                } else {
+                    setTimeout(() => 10 + Math.random() * 80);
+                }
+            };
+            addNextChar(i);
+        };
+
+        function addAudioEventListeners() {
+            const toggleButtons = document.querySelectorAll('.audio button');
+            toggleButtons.forEach(toggleButton => {
+                toggleButton.addEventListener('click', () => {
+                    const i_ = toggleButton.id.split("-")[1]
+                    const audioPlayer = document.querySelector(`#audioPlayer-${i_}`);
+                    audioPlayer.paused ? audioPlayer.play() : audioPlayer.pause();
+                    toggleButton.textContent = audioPlayer.paused ? '▶' : '❚❚';
+                    audioPlayer.addEventListener('ended', () => {
+                        toggleButton.textContent = '▶';
+                        resetSliderAndAudio(audioPlayer, i_);
+                    });
+                })
+            });
+        }
+
+        function resetSliderAndAudio(audioPlayer, index) {
+            const imgOverlay = document.querySelectorAll('.img-comp-overlay')[index];
+            const slider = imgOverlay.previousElementSibling;
+            imgOverlay.style.width = "0px";
+            slider.style.left = "5px";
+            audioPlayer.currentTime = 0;
+        }
+
+        function initComparisons() {
+            let x, i;
+            x = document.getElementsByClassName("img-comp-overlay");
+            for (i = 0; i < x.length; i++) compareImages(x[i], i);
+            function compareImages(img, index) {
+                let slider, clicked = 0, w, h;
+                w = img.offsetWidth;
+                h = img.offsetHeight;
+                img.style.width = "0px";
+                slider = document.createElement("DIV");
+                slider.setAttribute("class", "img-comp-slider");
+                img.parentElement.insertBefore(slider, img);
+                slider.style.left = "5px";
+                const audioPlayer = document.querySelector(`#audioPlayer-${index}`);
+                slider.addEventListener("mousedown", slideReady);
+                window.addEventListener("mouseup", slideFinish);
+                slider.addEventListener("touchstart", slideReady);
+                window.addEventListener("touchend", slideFinish);
+                audioPlayer.addEventListener("timeupdate", updateSliderPosition);
+
+                audioPlayer.addEventListener("loadedmetadata", () => {
+                    img.style.width = "0px";
+                    slider.style.left = "5px";
+                });
+
+                function slideReady(e) {
+                    e.preventDefault();
+                    clicked = 1;
+                    window.addEventListener("mousemove", slideMove);
+                    window.addEventListener("touchmove", slideMove);
+                }
+
+                function slideFinish() {
+                    clicked = 0;
+                    window.removeEventListener("mousemove", slideMove);
+                    window.removeEventListener("touchmove", slideMove);
+                }
+
+                function slideMove(e) {
+                    let pos;
+                    if (clicked == 0) return false;
+                    pos = getCursorPos(e);
+                    if (pos < 5) pos = 5;
+                    if (pos > w - 5) pos = w - 5;
+                    slide(pos);
+                }
+
+                function getCursorPos(e) {
+                    let a, x = 0;
+                    e = (e.changedTouches) ? e.changedTouches[0] : e;
+                    a = img.getBoundingClientRect();
+                    x = e.pageX - a.left;
+                    x = x - window.pageXOffset;
+                    return x;
+                }
+
+                function slide(x) {
+                    img.style.width = x + "px";
+                    slider.style.left = x - (slider.offsetWidth / 2) + "px";
+                    const percent = x / (w - 10);
+                    audioPlayer.currentTime = percent * audioPlayer.duration;
+                }
+
+                function updateSliderPosition() {
+                    const percent = audioPlayer.currentTime / audioPlayer.duration;
+                    img.style.width = percent * (w - 10) + "px";
+                    slider.style.left = img.offsetWidth + 5 - (slider.offsetWidth / 2) + "px";
+                }
+            }
+        }
+
+        window.onload = function () {
+            renderHistory();
+            calcularEspacoRestante();
+            homeLoad()
+        };
+    </script>
+</body>
+
+</html>
