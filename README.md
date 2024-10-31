@@ -22,3 +22,9 @@
 3. Optionally, view an AI-driven analysis of the content for broader understanding of the transcribed audio.
 
 > AudioVision was created to make auditory information more accessible through visual and textual formats, fostering inclusion and accessibility for individuals with hearing loss.
+
+## Access the App
+
+You can access my app and test it at [click here](https://vxncius.pythonanywhere.com/).
+
+![Captura de Tela (1)](https://github.com/user-attachments/assets/004c061c-75fc-4219-b8b0-30dbd8f23db3)
