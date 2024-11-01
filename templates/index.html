@@ -10,6 +10,7 @@
 </head>
 
 <body>
+    <span class="loader"></span>
     <section class="home">
         <nav>
             <img src="{{ url_for('static', filename='assets/icon.png')}}" alt="logo" width="30">
@@ -41,14 +42,22 @@
             <ul id="history-list"></ul>
         </div>
     </section>
+    <span id="info"></span>
 
     <script>
         const fileInputStart = document.getElementById('start');
         const fileInput = document.getElementById('file-input');
         const historyList = document.getElementById('history-list');
+        const loader = document.querySelector('.loader');
         const memory = document.querySelector('.size');
+        const info = document.getElementById('info');
         const uploadButtons = document.querySelectorAll('.button_upload');
         let isProcessing = false;
+
+        function checkInfoSpan() {
+            info.style.display = !info.textContent.length ? "none" : "flex";
+            setTimeout(()=> info.style.display = "none", 2000)
+        }
 
         document.addEventListener("contextmenu", e => e.preventDefault());
 
@@ -76,7 +85,6 @@
 
         async function handleFiles(e) {
             if (isProcessing) return;
-
             isProcessing = true;
             const input = e.target;
             const file = input.files[0];
@@ -87,7 +95,7 @@
                 isProcessing = false;
                 return;
             }
-
+            loader.style.display = "inline-block";
             document.body.style.pointerEvents = "none";
             const { base64, size, name } = await convertToBase64(file);
             const uniqueId = generateRandomId();
@@ -121,11 +129,15 @@
                     }
                 })
                 .catch(error => {
-                    console.error('Erro ao enviar o arquivo:', error);
+                    const message_ = `Erro ao enviar o arquivo: ${error}`;
+                    console.error(message_);
+                    info.textContent = message_;
+                    checkInfoSpan()
                 })
                 .finally(() => {
                     isProcessing = false;
                     document.body.style.pointerEvents = "auto";
+                    loader.style.display = "none";
                 });
         }
 
@@ -143,7 +155,10 @@
                     animate(id)
                 }
             } catch (error) {
-                console.error('Erro ao enviar a transcrição para análise da IA:', error);
+                const message_ = `Erro ao enviar a transcrição para análise da IA: ${error}`;
+                console.error(message_);
+                info.textContent = message_;
+                checkInfoSpan()
             }
         }
 
@@ -454,6 +469,7 @@
             renderHistory();
             calcularEspacoRestante();
             homeLoad()
+            checkInfoSpan()
         };
     </script>
 </body>
