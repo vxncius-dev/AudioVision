@@ -28,6 +28,32 @@ html {
   cursor: url("./assets/cursor.png"), auto;
 }
 
+.loader {
+  --size: 35px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--size);
+  height: var(--size);
+  border: 5px solid #787878;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  display: none;
+  box-sizing: border-box;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
 body {
   min-width: var(--minSize);
   min-height: 100vh;
@@ -88,7 +114,7 @@ section {
 
 small {
   text-align: center;
-  margin-bottom: 40px;
+  margin-bottom: 80px;
 }
 
 i {
@@ -158,7 +184,7 @@ nav {
   text-align: center;
 }
 
-.button_upload:active{
+.button_upload:active {
   scale: .98;
 }
 
@@ -302,7 +328,7 @@ li:hover {
   align-items: start;
 }
 
-.GeminiArea span{
+.GeminiArea span {
   font-weight: normal;
   font-style: normal;
   display: inline;
@@ -327,13 +353,13 @@ li:hover {
   gap: 7px;
 }
 
-.audioNav{
+.audioNav {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-.gem{
+.gem {
   width: 40px;
   height: 40px;
   border-radius: 50px;
@@ -342,6 +368,18 @@ li:hover {
   background: #212121;
 }
 
-.gem img{
+.gem img {
   image-rendering: crisp-edges;
+}
+
+#info{
+  position: fixed;
+  bottom: 120px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 5px;
+  border: 2px solid #212121;
+  white-space: nowrap;
+  background: #111;
 }
